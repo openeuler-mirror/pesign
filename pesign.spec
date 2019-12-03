@@ -132,5 +132,5 @@ exit 0
 - SUG:NA
 - DESC:roll back to the 0.112-24
 
-* Sat Nov 30 2019 gulining<gulining1@huawei.com> - 0.112-2
+* Sat Nov 30 2019 gulining<gulining1@huawei.com> - 0.112-26
 - Pakcage init
