@@ -2,13 +2,11 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       1
+Release:       2
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
 Source0:       pesign-%{version}.tar.gz
-Source1:       certs.tar.xz
-Source2:       pesign.py
-Source3:       euleros-certs.tar.bz2
+Source1:       pesign.py
 Obsoletes:     pesign-rh-test-certs <= 0.111-7
 Requires:      nspr nss nss-util popt rpm
 Requires(pre): shadow-utils
@@ -28,8 +26,7 @@ Requires:       %{name} = %{version}-%{release}
 Files for help with pesign.
 
 %prep
-%autosetup -n %{name}-113 -p1 -T -b 0 -D -c -a 1
-tar -jxf %{SOURCE3}
+%autosetup -n %{name}-113 -p1 -T -b 0 -D -c
 
 %build
 make PREFIX=%{_prefix} LIBDIR=%{_libdir}
@@ -38,13 +35,10 @@ make PREFIX=%{_prefix} LIBDIR=%{_libdir}
 mkdir -p %{buildroot}/%{_libdir}
 make PREFIX=%{_prefix} LIBDIR=%{_libdir} INSTALLROOT=%{buildroot} install
 make PREFIX=%{_prefix} LIBDIR=%{_libdir} INSTALLROOT=%{buildroot} install_systemd
-install -D etc/pki/pesign/* %{buildroot}%{_sysconfdir}/pki/pesign/
-install -D etc/pki/pesign-rh-test/* %{buildroot}%{_sysconfdir}/pki/pesign-rh-test/
-mv euleros-certs/etc/pki/pesign/euleros-pesign-db %{buildroot}/etc/pki/pesign/
 install -D %{buildroot}%{_sysconfdir}/rpm/macros.pesign %{buildroot}%{macrosdir}/macros.pesign
 rm -vf %{buildroot}/usr/share/doc/pesign-113/COPYING
 install -d -m 0755 %{buildroot}%{python3_sitelib}/mockbuild/plugins/
-install -m 0755 %{SOURCE2} %{buildroot}%{python3_sitelib}/mockbuild/plugins/
+install -m 0755 %{SOURCE1} %{buildroot}%{python3_sitelib}/mockbuild/plugins/
 
 %pre
 getent group pesign >/dev/null || groupadd -r pesign
@@ -66,17 +60,11 @@ exit 0
 %doc COPYING
 %{_bindir}/*
 %dir %{_libexecdir}/pesign/
-%dir %attr(0770,pesign,pesign) %{_sysconfdir}/pki/pesign/
-%config(noreplace) %attr(0660,pesign,pesign) %{_sysconfdir}/pki/pesign/*
-%dir %attr(0775,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/
-%config(noreplace) %attr(0664,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/*
 %{_libexecdir}/pesign/pesign-authorize
 %config(noreplace)/%{_sysconfdir}/pesign/*
 %{_sysconfdir}/popt.d/pesign.popt
 %{macrosdir}/macros.pesign
 %dir %attr(0770, pesign, pesign) %{_localstatedir}/run/%{name}
-%dir %attr(0775,pesign,pesign) /etc/pki/pesign/euleros-pesign-db
-%attr(0644,pesign,pesign) /etc/pki/pesign/euleros-pesign-db/*
 %ghost %attr(0660, -, -) %{_localstatedir}/run/%{name}/socket
 %ghost %attr(0660, -, -) %{_localstatedir}/run/%{name}/pesign.pid
 %{_tmpfilesdir}/pesign.conf
@@ -91,6 +79,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Fri Jun 5 2020 Senlin Xia <xiasenlin1@huawei.com> - 0.113-2
+- remove certs
+
 * Mon Jan 13 2020 openEuler Buildteam <buildteam@openeuler.org> - 0.113-1
 - Type:bugfix
 - Id:NA
