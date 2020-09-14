@@ -2,10 +2,10 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       2
+Release:       3
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
-Source0:       pesign-%{version}.tar.gz
+Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
 Source1:       certs.tar.xz
 Source2:       pesign.py
 Source3:       euleros-certs.tar.bz2
@@ -93,6 +93,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Thu Sep 10 2020 baizhonggui <baizhonggui@huawei.com> - 0.113-3
+- Modify source0 and replace package
+
 * Wed Aug 05 2020 lingsheng <lingsheng@huawei.com> - 0.113-2
 - Fix the build with nss 3.44
 
