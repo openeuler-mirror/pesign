@@ -2,10 +2,10 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       2
+Release:       3
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
-Source0:       pesign-%{version}.tar.gz
+Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
 Source1:       pesign.py
 Obsoletes:     pesign-rh-test-certs <= 0.111-7
 Requires:      nspr nss nss-util popt rpm
@@ -13,6 +13,8 @@ Requires(pre): shadow-utils
 BuildRequires: nspr nss nss-util popt-devel nss-tools nspr-devel >= 4.9.2-1
 BuildRequires: nss-devel >= 3.13.6-1 efivar-devel >= 31-1 libuuid-devel tar xz
 BuildRequires: python3-rpm-macros python3 systemd python3-devel
+
+Patch0001:     Fix-the-build-with-nss-3.44.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -79,8 +81,11 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
-* Fri Jun 5 2020 Senlin Xia <xiasenlin1@huawei.com> - 0.113-2
-- remove certs
+* Thu Sep 10 2020 baizhonggui <baizhonggui@huawei.com> - 0.113-3
+- Modify source0 and replace package
+
+* Wed Aug 05 2020 lingsheng <lingsheng@huawei.com> - 0.113-2
+- Fix the build with nss 3.44
 
 * Mon Jan 13 2020 openEuler Buildteam <buildteam@openeuler.org> - 0.113-1
 - Type:bugfix
