@@ -94,7 +94,7 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
-* Sat July 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
+* Sat Jul 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
 - remove-superfluous-type-settings.patch
 
 * Mon May 31 2021 huanghaitao <huanghaitao8@huawei.com> - 0.113-4
