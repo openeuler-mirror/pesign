@@ -1,0 +1,32 @@
+From fa5e86eca363b8d2bcf23feedcc86fdd076be7d4 Mon Sep 17 00:00:00 2001
+From: godcansee <liu332084460@foxmail.com>
+Date: Sun, 2 Oct 2022 04:23:35 +0800
+Subject: [PATCH 1/2] pesign support SM3 digest algorithm.
+
+---
+ src/cms_common.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/cms_common.c b/src/cms_common.c
+index d13b2cb..7b6dc0e 100644
+--- a/src/cms_common.c
++++ b/src/cms_common.c
+@@ -68,6 +68,15 @@ static struct digest_param digest_params[] = {
+ 	 .size = 20
+ 	},
+ #endif
++#if defined(CKM_SM2_WITH_SM3)
++	{.name = "sm3",
++	 .digest_tag = SEC_OID_SM3,
++	 .signature_tag = SEC_OID_SM2_WITH_SM3,
++	 .digest_encryption_tag = SEC_OID_SM2_WITH_SM3,
++	 .efi_guid = NULL,
++	 .size = 32
++	},
++#endif
+ };
+ static int n_digest_params = sizeof (digest_params) / sizeof (digest_params[0]);
+ 
+-- 
+2.33.0
+
