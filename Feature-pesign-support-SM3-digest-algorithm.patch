@@ -15,7 +15,7 @@ index d13b2cb..7b6dc0e 100644
  	 .size = 20
  	},
  #endif
-+#if defined(CKM_SM2_WITH_SM3)
++#if defined(CKM_SM2_WITH_SM3) || defined(CKM_NSS_SM2_WITH_SM3)
 +	{.name = "sm3",
 +	 .digest_tag = SEC_OID_SM3,
 +	 .signature_tag = SEC_OID_SM2_WITH_SM3,
