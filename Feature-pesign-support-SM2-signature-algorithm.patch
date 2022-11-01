@@ -1,0 +1,112 @@
+From 6c47b45347c946221a8acc3ea3a6a9cfcd734756 Mon Sep 17 00:00:00 2001
+From: godcansee <liu332084460@foxmail.com>
+Date: Sun, 2 Oct 2022 04:33:40 +0800
+Subject: [PATCH 2/2] pesign support SM2 signature algorithm.
+
+Co-authored-by:Huaxin Lu <luhuaxin1@huawei.com>
+---
+ src/signer_info.c | 72 ++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 71 insertions(+), 1 deletion(-)
+
+diff --git a/src/signer_info.c b/src/signer_info.c
+index afa00e2..4aabf5d 100644
+--- a/src/signer_info.c
++++ b/src/signer_info.c
+@@ -157,6 +157,65 @@ err:
+ 	return -1;
+ }
+ 
++#if defined(CKM_SM2_WITH_SM3) || defined(CKM_NSS_SM2_WITH_SM3)
++static int sm2_sign(SECItem *sig, cms_context *cms, SECKEYPrivateKey *privkey,
++		SECItem *content, SECOidData *oid)
++{
++	int ret = -1;
++	SECKEYPublicKey *pubkey;
++	unsigned char *buf;
++	SECStatus status;
++	SECItem sig_raw = { 0 };
++
++	pubkey = CERT_ExtractPublicKey(cms->cert);
++	if (!pubkey) {
++		cms->log(cms, LOG_ERR, "could not get public key");
++		return -1;
++	}
++
++	if (pubkey->keyType != ecKey) {
++		cms->log(cms, LOG_ERR, "invalid key type for sm2");
++		goto out;
++	}
++
++	buf = malloc(content->len + SM3_LENGTH);
++	if (!buf) {
++		cms->log(cms, LOG_ERR, "fail to alloc item");
++		goto out;
++	}
++
++	status = SEC_CreateSM2Digest(buf, &pubkey->u.ec.publicValue);
++	if (status != SECSuccess) {
++		cms->log(cms, LOG_ERR, "fail to compute sm2 z digest");
++		goto out;
++	}
++
++	memcpy(buf + SM3_LENGTH, content->data, content->len);
++	status = SEC_SignData(&sig_raw, buf, content->len + SM3_LENGTH,
++			privkey, oid->offset);
++	if (status != SECSuccess) {
++		cms->log(cms, LOG_ERR, "fail to sign data with sm2");
++		goto out;
++	}
++
++	status = DSAU_EncodeDerSigWithLen(sig, &sig_raw, 64);
++	if (status != SECSuccess) {
++		cms->log(cms, LOG_ERR, "fail to encode sm2 sig");
++		goto out;
++	}
++
++	ret = 0;
++out:
++	SECKEY_DestroyPublicKey(pubkey);
++	if (buf)
++		free(buf);
++	if (sig_raw.data)
++		PORT_Free(sig_raw.data);
++
++	return ret;
++}
++#endif
++
+ static int
+ sign_blob(cms_context *cms, SECItem *sigitem, SECItem *sign_content)
+ {
+@@ -169,7 +228,8 @@ sign_blob(cms_context *cms, SECItem *sigitem, SECItem *sign_content)
+ 		return -1;
+ 	}
+ 
+-	SECOidData *oid = SECOID_FindOIDByTag(digest_get_signature_oid(cms));
++	SECOidTag oidt = digest_get_signature_oid(cms);
++	SECOidData *oid = SECOID_FindOIDByTag(oidt);
+ 	if (!oid)
+ 		goto err;
+ 
+@@ -186,8 +246,18 @@ sign_blob(cms_context *cms, SECItem *sigitem, SECItem *sign_content)
+ 	memset (&tmp, '\0', sizeof (tmp));
+ 
+ 	SECStatus status;
++#if defined(CKM_SM2_WITH_SM3) || defined(CKM_NSS_SM2_WITH_SM3)
++	if (oidt == SEC_OID_SM2_WITH_SM3) {
++		status = sm2_sign(&tmp, cms, privkey, sign_content, oid) ?
++			SECFailure : SECSuccess;
++	} else {
++		status = SEC_SignData(&tmp, sign_content->data, sign_content->len,
++				privkey, oid->offset);
++	}
++#else
+ 	status = SEC_SignData(&tmp, sign_content->data, sign_content->len,
+ 			privkey, oid->offset);
++#endif
+ 	SECKEY_DestroyPrivateKey(privkey);
+ 	privkey = NULL;
+ 
+-- 
+2.33.0
+

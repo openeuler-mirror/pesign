@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       5
+Release:       7
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
 Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
@@ -18,6 +18,10 @@ BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc
 
 Patch0001:     Fix-the-build-with-nss-3.44.patch
 Patch0002:     remove-superfluous-type-settings.patch
+
+# Feature: support SM2 and SM3
+Patch9000:     Feature-pesign-support-SM3-digest-algorithm.patch
+Patch9001:     Feature-pesign-support-SM2-signature-algorithm.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -94,7 +98,13 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
-* Sat Jul 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
+* Mon Oct 31 2022 luhuaxin <luhuaxin1@huawei.com> - 0.113-7
+- fix the algorithm flag for sm2,sm3
+
+* Mon Oct 10 2022 godcansee <liu332084460@foxmail.com> - 0.113-6
+- add feature to support for sm2,sm3 
+
+* Sat July 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
 - remove-superfluous-type-settings.patch
 
 * Mon May 31 2021 huanghaitao <huanghaitao8@huawei.com> - 0.113-4
