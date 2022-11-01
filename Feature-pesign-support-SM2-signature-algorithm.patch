@@ -16,7 +16,7 @@ index afa00e2..4aabf5d 100644
  	return -1;
  }
  
-+#if defined(CKM_SM2_WITH_SM3)
++#if defined(CKM_SM2_WITH_SM3) || defined(CKM_NSS_SM2_WITH_SM3)
 +static int sm2_sign(SECItem *sig, cms_context *cms, SECKEYPrivateKey *privkey,
 +		SECItem *content, SECOidData *oid)
 +{
@@ -92,7 +92,7 @@ index afa00e2..4aabf5d 100644
  	memset (&tmp, '\0', sizeof (tmp));
  
  	SECStatus status;
-+#if defined(CKM_SM2_WITH_SM3)
++#if defined(CKM_SM2_WITH_SM3) || defined(CKM_NSS_SM2_WITH_SM3)
 +	if (oidt == SEC_OID_SM2_WITH_SM3) {
 +		status = sm2_sign(&tmp, cms, privkey, sign_content, oid) ?
 +			SECFailure : SECSuccess;
