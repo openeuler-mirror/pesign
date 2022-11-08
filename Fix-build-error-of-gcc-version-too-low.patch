@@ -1,0 +1,53 @@
+From 3afba00007f294baca8c7cfbc20cec24899fe5f1 Mon Sep 17 00:00:00 2001
+From: jinlun <jinlun@huawei.com>
+Date: Mon, 7 Nov 2022 20:41:08 +0800
+Subject: [PATCH] fix build error of gcc version too low
+
+---
+ src/daemon.c   | 3 ---
+ src/password.c | 3 ---
+ 2 files changed, 6 deletions(-)
+
+diff --git a/src/daemon.c b/src/daemon.c
+index 0a66deb..c5061bd 100644
+--- a/src/daemon.c
++++ b/src/daemon.c
+@@ -920,8 +920,6 @@ do_shutdown(context *ctx, int nsockets, struct pollfd *pollfds)
+ 
+ /* GCC -fanalyzer has trouble with realloc
+  * https://bugzilla.redhat.com/show_bug.cgi?id=2047926 */
+-#pragma GCC diagnostic push
+-#pragma GCC diagnostic ignored "-Wanalyzer-use-of-uninitialized-value"
+ static int
+ handle_events(context *ctx)
+ {
+@@ -1000,7 +998,6 @@ shutdown:
+ 	}
+ 	return 0;
+ }
+-#pragma GCC diagnostic pop
+ 
+ static int
+ get_uid_and_gid(context *ctx, char **homedir)
+diff --git a/src/password.c b/src/password.c
+index 05add9a..0f359d2 100644
+--- a/src/password.c
++++ b/src/password.c
+@@ -304,14 +304,11 @@ SECU_FilePasswd(PK11SlotInfo *slot, PRBool retry, void *arg)
+ 
+ 		/* Workaround for -fanalzer/reallocarray() bug
+ 		 * https://bugzilla.redhat.com/show_bug.cgi?id=2047926 */
+-#pragma GCC diagnostic push
+-#pragma GCC diagnostic ignored "-Wanalyzer-mismatching-deallocation"
+ 		new_phrases = reallocarray(phrases, nphrases + 1, sizeof(struct token_pass));
+ 		if (!new_phrases)
+ 			goto err_phrases;
+ 		phrases = new_phrases;
+ 		memset(&new_phrases[nphrases], 0, sizeof(struct token_pass));
+-#pragma GCC diagnostic pop
+ 
+ 		span = strspn(start, whitespace_and_eol_chars);
+ 		dprintf("whitespace span is %zd", span);
+-- 
+2.27.0
+
