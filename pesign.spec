@@ -1,11 +1,11 @@
 %global macrosdir %(d=%{_rpmconfigdir}/macros.d; [ -d $d ] || d=%{_sysconfdir}/rpm; echo $d)
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
-Version:       0.113
-Release:       7
+Version:       115
+Release:       1
 License:       GPLv2
-URL:           https://github.com/vathpela/pesign
-Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
+URL:           https://github.com/rhboot/pesign
+Source0:       https://github.com/rhboot/pesign/archive/refs/tags/115.tar.gz
 Source1:       certs.tar.xz
 Source2:       pesign.py
 Source3:       euleros-certs.tar.bz2
@@ -14,14 +14,12 @@ Requires:      nspr nss nss-util popt rpm
 Requires(pre): shadow-utils
 BuildRequires: nspr nss nss-util popt-devel nss-tools nspr-devel >= 4.9.2-1
 BuildRequires: nss-devel >= 3.13.6-1 efivar-devel >= 31-1 libuuid-devel tar xz
-BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc
-
-Patch0001:     Fix-the-build-with-nss-3.44.patch
-Patch0002:     remove-superfluous-type-settings.patch
+BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc mandoc
 
 # Feature: support SM2 and SM3
 Patch9000:     Feature-pesign-support-SM3-digest-algorithm.patch
 Patch9001:     Feature-pesign-support-SM2-signature-algorithm.patch
+Patch9002:     Fix-build-error-of-gcc-version-too-low.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -35,7 +33,7 @@ Requires:       %{name} = %{version}-%{release}
 Files for help with pesign.
 
 %prep
-%autosetup -n %{name}-113 -p1 -T -b 0 -D -c -a 1
+%autosetup -n %{name}-%{version} -p1 -T -b 0 -D -c -a 1
 tar -jxf %{SOURCE3}
 
 %build
@@ -49,7 +47,7 @@ install -D etc/pki/pesign/* %{buildroot}%{_sysconfdir}/pki/pesign/
 install -D etc/pki/pesign-rh-test/* %{buildroot}%{_sysconfdir}/pki/pesign-rh-test/
 mv euleros-certs/etc/pki/pesign/euleros-pesign-db %{buildroot}/etc/pki/pesign/
 install -D %{buildroot}%{_sysconfdir}/rpm/macros.pesign %{buildroot}%{macrosdir}/macros.pesign
-rm -vf %{buildroot}/usr/share/doc/pesign-113/COPYING
+rm -vf %{buildroot}/usr/share/doc/pesign-%{version}/COPYING
 install -d -m 0755 %{buildroot}%{python3_sitelib}/mockbuild/plugins/
 install -m 0755 %{SOURCE2} %{buildroot}%{python3_sitelib}/mockbuild/plugins/
 
@@ -78,10 +76,10 @@ exit 0
 %dir %attr(0775,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/
 %config(noreplace) %attr(0664,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/*
 %{_libexecdir}/pesign/pesign-authorize
+%{_libexecdir}/pesign/pesign-rpmbuild-helper
 %config(noreplace)/%{_sysconfdir}/pesign/*
 %{_sysconfdir}/popt.d/pesign.popt
 %{macrosdir}/macros.pesign
-%dir %attr(0770, pesign, pesign) %{_localstatedir}/run/%{name}
 %dir %attr(0775,pesign,pesign) /etc/pki/pesign/euleros-pesign-db
 %attr(0644,pesign,pesign) /etc/pki/pesign/euleros-pesign-db/*
 %ghost %attr(0660, -, -) %{_localstatedir}/run/%{name}/socket
@@ -98,13 +96,19 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Mon Nov 7 2022 jinlun <jinlun@huawei.com> - 115-1
+- Type:bugfix
+- Id:NA
+- SUG:NA
+- DESC:update to 115
+
 * Mon Oct 31 2022 luhuaxin <luhuaxin1@huawei.com> - 0.113-7
 - fix the algorithm flag for sm2,sm3
 
 * Mon Oct 10 2022 godcansee <liu332084460@foxmail.com> - 0.113-6
 - add feature to support for sm2,sm3 
 
-* Sat July 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
+* Sat Jul 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
 - remove-superfluous-type-settings.patch
 
 * Mon May 31 2021 huanghaitao <huanghaitao8@huawei.com> - 0.113-4
