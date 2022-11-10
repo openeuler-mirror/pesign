@@ -21,8 +21,8 @@ index afa00e2..4aabf5d 100644
 +		SECItem *content, SECOidData *oid)
 +{
 +	int ret = -1;
-+	SECKEYPublicKey *pubkey;
-+	unsigned char *buf;
++	SECKEYPublicKey *pubkey = NULL;
++	unsigned char *buf = NULL;
 +	SECStatus status;
 +	SECItem sig_raw = { 0 };
 +
