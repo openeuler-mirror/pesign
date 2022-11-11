@@ -1,0 +1,29 @@
+From c6a38cd80916e7a412227836b1865685e8d1ccfd Mon Sep 17 00:00:00 2001
+From: Huaxin Lu <luhuaxin1@huawei.com>
+Date: Fri, 11 Nov 2022 11:20:35 +0800
+Subject: [PATCH] cms_common: fix cert match check
+
+In find_certificate_by_callback(), the match() returns 1
+when cert subject is matched.
+
+Signed-off-by: Huaxin Lu <luhuaxin1@huawei.com>
+---
+ src/cms_common.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/cms_common.c b/src/cms_common.c
+index 1c54c90..d3e6dea 100644
+--- a/src/cms_common.c
++++ b/src/cms_common.c
+@@ -872,7 +872,7 @@ find_certificate_by_callback(cms_context *cms,
+ 			continue;
+ 
+ 		int rc = match(tmpnode->cert, cbdata);
+-		if (rc == 0) {
++		if (rc == 1) {
+ 			node = tmpnode;
+ 			break;
+ 		}
+-- 
+2.33.0
+
