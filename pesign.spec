@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       115
-Release:       2
+Release:       3
 License:       GPLv2
 URL:           https://github.com/rhboot/pesign
 Source0:       https://github.com/rhboot/pesign/archive/refs/tags/115.tar.gz
@@ -17,6 +17,7 @@ BuildRequires: nss-devel >= 3.13.6-1 efivar-devel >= 31-1 libuuid-devel tar xz
 BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc mandoc
 
 Patch0001:     Bugfix-cms_common-fix-cert-match-check.patch
+Patch0002:     Bugfix-Free-resources-if-certificate-cannot-be-found.patch
 
 # Feature: support SM2 and SM3
 Patch9000:     Feature-pesign-support-SM3-digest-algorithm.patch
@@ -98,6 +99,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Mon Dec 19 2022 Chenxi Mao <chenxi.mao@suse.com> - 115-3
+- Free resources if certification cannot be found. 
+
 * Sat Nov 12 2022 luhuaxin <luhuaxin1@huawei.com> - 115-2
 - fix certificate chain bug
 
