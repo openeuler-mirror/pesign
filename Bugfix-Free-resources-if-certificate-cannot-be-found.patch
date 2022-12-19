@@ -1,0 +1,39 @@
+From d8ea40d773dc1bcd90d8fc3b1f71ce49044ccef0 Mon Sep 17 00:00:00 2001
+From: Chenxi Mao <chenxi.mao@suse.com>
+Date: Tue, 13 Dec 2022 22:12:29 +0800
+Subject: [PATCH 1/1] Free resources if certificate cannot be found
+
+In find_certificate_by_callback, function return -1 directly without
+free resource if node is null, that will lead to nss shut down failed.
+
+The error message as below:
+could not shut down NSS: NSS could not shutdown. Objects are still in use.
+
+To fix this issue, free all resources before function return -1.
+
+Signed-off-by: Chenxi Mao <chenxi.mao@suse.com>
+---
+ src/cms_common.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/cms_common.c b/src/cms_common.c
+index 1c54c90..24576f2 100644
+--- a/src/cms_common.c
++++ b/src/cms_common.c
+@@ -878,8 +878,12 @@ find_certificate_by_callback(cms_context *cms,
+ 		}
+ 	}
+ 
+-	if (!node)
++	if (!node) {
++		PK11_DestroySlotListElement(slots, &psle);
++		PK11_FreeSlotList(slots);
++		CERT_DestroyCertList(certlist);
+ 		cnreterr(-1, cms, "Could not find certificate");
++	}
+ 
+ 	*cert = CERT_DupCertificate(node->cert);
+ 
+-- 
+2.33.0
+
