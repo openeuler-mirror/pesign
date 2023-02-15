@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       115
-Release:       3
+Release:       4
 License:       GPLv2
 URL:           https://github.com/rhboot/pesign
 Source0:       https://github.com/rhboot/pesign/archive/refs/tags/115.tar.gz
@@ -23,6 +23,7 @@ Patch0002:     Bugfix-Free-resources-if-certificate-cannot-be-found.patch
 Patch9000:     Feature-pesign-support-SM3-digest-algorithm.patch
 Patch9001:     Feature-pesign-support-SM2-signature-algorithm.patch
 Patch9002:     Fix-build-error-of-gcc-version-too-low.patch
+Patch9003:     Fix-CVE-2022-3560.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -99,6 +100,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Tue Feb 14 2023 luopihui <luopihui@ncti-gba.cn> - 115-4
+- Fix CVE-2022-3560
+
 * Mon Dec 19 2022 Chenxi Mao <chenxi.mao@suse.com> - 115-3
 - Free resources if certification cannot be found. 
 
