@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       5
+Release:       6
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
 Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
@@ -18,6 +18,7 @@ BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc
 
 Patch0001:     Fix-the-build-with-nss-3.44.patch
 Patch0002:     remove-superfluous-type-settings.patch
+Patch0003:     Fix-CVE-2022-3560.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -94,6 +95,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Tue Feb 14 2023 luopihui <luopihui@ncti-gba.cn> - 0.113-6
+- Fix CVE-2022-3560
+
 * Sat July 31 2021 Shenmei Tu <tushenmei@huawei.com> - 0.113-5
 - remove-superfluous-type-settings.patch
 
