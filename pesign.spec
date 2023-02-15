@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       4
+Release:       5
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
 Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
@@ -14,6 +14,7 @@ BuildRequires: nspr nss nss-util popt-devel nss-tools nspr-devel >= 4.9.2-1
 BuildRequires: nss-devel >= 3.13.6-1 efivar-devel >= 31-1 libuuid-devel tar xz
 BuildRequires: python3-rpm-macros python3 systemd python3-devel
 Patch0001:     Fix-the-build-with-nss-3.44.patch
+Patch0002:     Fix-CVE-2022-3560.patch
 %description
 pesign is a command line tool for manipulating signatures and
 cryptographic digests of UEFI applications.
@@ -79,6 +80,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Wed Feb 15 2023 luopihui <luopihui@ncti-gba.cn> - 0.113-5
+- Fix CVE-2022-3560 
+
 * Sat Oct 10 2020 baizhonggui <baizhonggui@huawei.com> - 0.113-4
 - Fix the build with nss 3.44 
 
