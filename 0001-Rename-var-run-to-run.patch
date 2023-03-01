@@ -1,0 +1,849 @@
+From f509b185d7f380305de90c5935b9fb258d9083a2 Mon Sep 17 00:00:00 2001
+From: Peter Jones <pjones@redhat.com>
+Date: Fri, 12 Jun 2020 11:49:44 -0400
+Subject: [PATCH] Rename /var/run/ to /run/
+
+---
+ Make.defaults                 |   4 +-
+ src/Makefile                  |  10 +-
+ src/client.c                  | 112 +++++++++++-----
+ src/daemon.c                  |  49 +++++--
+ src/daemon.h                  |   6 +-
+ src/macros.pesign             |  74 ++++-------
+ src/pesign-authorize          |   2 +-
+ src/pesign-rpmbuild-helper.in | 239 ++++++++++++++++++++++++++++++++++
+ src/pesign.service.in         |   2 +-
+ src/pesign.sysvinit.in        |  10 +-
+ src/tmpfiles.conf             |   2 +-
+ 11 files changed, 399 insertions(+), 111 deletions(-)
+ create mode 100644 src/pesign-rpmbuild-helper.in
+
+diff --git a/Make.defaults b/Make.defaults
+index 0bacafe..423ab98 100644
+--- a/Make.defaults
++++ b/Make.defaults
+@@ -16,6 +16,8 @@ INSTALLROOT = $(DESTDIR)
+ 
+ INSTALL	?= install
+ CROSS_COMPILE	?=
++EFI_ARCHES ?= aa64 ia32 x64
++
+ 
+ PKG_CONFIG = $(CROSS_COMPILE)pkg-config
+ CC	:= $(if $(filter default,$(origin CC)),$(CROSS_COMPILE)gcc,$(CC))
+@@ -39,7 +41,7 @@ gcc_cflags = -Wmaybe-uninitialized -grecord-gcc-switches -flto
+ cflags	= $(CFLAGS) $(ARCH3264) \
+ 	-Wall -Wextra -Wsign-compare -Wno-unused-result \
+ 	-Wno-unused-function -Wno-missing-field-initializers \
+-	-Werror -Wno-error=cpp \
++	-Werror -Wno-error=cpp -Wno-free-nonheap-object\
+ 	-std=gnu11 -fshort-wchar -fPIC -fno-strict-aliasing \
+ 	-D_GNU_SOURCE -DCONFIG_$(ARCH) -I${TOPDIR}/include \
+ 	$(if $(filter $(CC),clang),$(clang_cflags), ) \
+diff --git a/src/Makefile b/src/Makefile
+index 74327ba..f7fb5fc 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -5,7 +5,7 @@ include $(TOPDIR)/Make.version
+ include $(TOPDIR)/Make.rules
+ include $(TOPDIR)/Make.defaults
+ 
+-BINTARGETS=authvar client efikeygen efisiglist pesigcheck pesign
++BINTARGETS=authvar client efikeygen efisiglist pesigcheck pesign pesign-rpmbuild-helper
+ SVCTARGETS=pesign.sysvinit pesign.service
+ TARGETS=$(BINTARGETS) $(SVCTARGETS)
+ 
+@@ -49,6 +49,11 @@ pesign : $(call objects-of,$(PESIGN_SOURCES) $(COMMON_SOURCES) $(COMMON_PE_SOURC
+ pesign : LDLIBS+=$(TOPDIR)/libdpe/libdpe.a
+ pesign : PKGS=efivar nss nspr popt
+ 
++pesign-rpmbuild-helper: pesign-rpmbuild-helper.in
++	sed \
++		-e "s/@@EFI_ARCHES@@/$(EFI_ARCHES)/g" \
++		$^ > $@
++
+ deps : PKGS=efivar nss nspr popt uuid
+ deps : $(ALL_SOURCES)
+ 	$(MAKE) -f $(TOPDIR)/Make.deps \
+@@ -73,7 +78,7 @@ install_sysvinit: pesign.sysvinit
+ install :
+ 	$(INSTALL) -d -m 700 $(INSTALLROOT)/etc/pki/pesign/
+ 	$(INSTALL) -d -m 700 $(INSTALLROOT)/etc/pki/pesign-rh-test/
+-	$(INSTALL) -d -m 770 $(INSTALLROOT)/var/run/pesign/
++	$(INSTALL) -d -m 770 $(INSTALLROOT)/run/pesign/
+ 	$(INSTALL) -d -m 755 $(INSTALLROOT)$(bindir)
+ 	$(INSTALL) -m 755 authvar $(INSTALLROOT)$(bindir)
+ 	$(INSTALL) -m 755 pesign $(INSTALLROOT)$(bindir)
+@@ -94,6 +99,7 @@ install :
+ 	$(INSTALL) -m 644 macros.pesign $(INSTALLROOT)/etc/rpm/
+ 	$(INSTALL) -d -m 755 $(INSTALLROOT)$(libexecdir)/pesign/
+ 	$(INSTALL) -m 750 pesign-authorize $(INSTALLROOT)$(libexecdir)/pesign/
++	$(INSTALL) -m 755 pesign-rpmbuild-helper $(INSTALLROOT)$(libexecdir)/pesign/
+ 	$(INSTALL) -d -m 700 $(INSTALLROOT)/etc/pesign
+ 	$(INSTALL) -m 600 pesign-users $(INSTALLROOT)/etc/pesign/users
+ 	$(INSTALL) -m 600 pesign-groups $(INSTALLROOT)/etc/pesign/groups
+diff --git a/src/client.c b/src/client.c
+index 4a9a44e..caaa86a 100644
+--- a/src/client.c
++++ b/src/client.c
+@@ -23,6 +23,7 @@
+ #include <fcntl.h>
+ #include <popt.h>
+ #include <pwd.h>
++#include <stdbool.h>
+ #include <stddef.h>
+ #include <stdlib.h>
+ #include <sys/socket.h>
+@@ -60,24 +61,24 @@ print_flag_name(FILE *f, int flag)
+ }
+ 
+ static int
+-connect_to_server(void)
++connect_to_server_helper(const char * const sockpath)
+ {
+-	int rc = access(SOCKPATH, R_OK);
++	int rc = access(sockpath, R_OK);
+ 	if (rc != 0) {
+-		fprintf(stderr, "pesign-client: could not connect to server: "
+-			"%m\n");
+-		exit(1);
++		warn("could not access socket \"%s\"", sockpath);
++		return rc;
+ 	}
+ 
+ 	struct sockaddr_un addr_un = {
+ 		.sun_family = AF_UNIX,
+-		.sun_path = SOCKPATH,
+ 	};
++	strncpy(addr_un.sun_path, sockpath, sizeof(addr_un.sun_path));
++	addr_un.sun_path[sizeof(addr_un.sun_path)-1] = '\0';
+ 
+ 	int sd = socket(AF_UNIX, SOCK_STREAM, 0);
+ 	if (sd < 0) {
+-		fprintf(stderr, "pesign-client: could not open socket: %m\n");
+-		exit(1);
++		warn("could not open socket \"%s\"", sockpath);
++		return sd;
+ 	}
+ 
+ 	socklen_t len = strlen(addr_un.sun_path) +
+@@ -85,19 +86,37 @@ connect_to_server(void)
+ 
+ 	rc = connect(sd, (struct sockaddr *)&addr_un, len);
+ 	if (rc < 0) {
+-		fprintf(stderr, "pesign-client: could not connect to daemon: "
+-			"%m\n");
+-		exit(1);
++		warn("could not connect to daemon");
++		return sd;
+ 	}
+ 
+ 	return sd;
+ }
+ 
++static int
++connect_to_server(void)
++{
++	int rc, i;
++	const char * const sockets[] = {
++		"/run/pesign/socket",
++		"/var/run/pesign/socket",
++		NULL
++	};
++
++	for (i = 0; sockets[i] != NULL; i++) {
++		rc = connect_to_server_helper(sockets[i]);
++		if (rc >= 0)
++			return rc;
++	}
++
++	exit(1);
++}
++
+ static int32_t
+ check_response(int sd, char **srvmsg);
+ 
+-static void
+-check_cmd_version(int sd, uint32_t command, char *name, int32_t version)
++static int
++check_cmd_version(int sd, uint32_t command, char *name, int32_t version, bool do_exit)
+ {
+ 	struct msghdr msg;
+ 	struct iovec iov[1];
+@@ -116,7 +135,7 @@ check_cmd_version(int sd, uint32_t command, char *name, int32_t version)
+ 	ssize_t n;
+ 	n = sendmsg(sd, &msg, 0);
+ 	if (n < 0) {
+-		fprintf(stderr, "check-cmd-version: kill daemon failed: %m\n");
++		fprintf(stderr, "check-cmd-version: sendmsg failed: %m\n");
+ 		exit(1);
+ 	}
+ 
+@@ -132,11 +151,16 @@ check_cmd_version(int sd, uint32_t command, char *name, int32_t version)
+ 
+ 	char *srvmsg = NULL;
+ 	int32_t rc = check_response(sd, &srvmsg);
+-	if (rc < 0)
++	
++	if (do_exit && rc < 0)
+ 		errx(1, "command \"%s\" not known by server", name);
+-	if (rc != version)
++	if (do_exit && rc != version)
+ 		errx(1, "command \"%s\": client version %d, server version %d",
+ 			name, version, rc);
++
++	if (rc < 0)
++		return rc;
++	return rc == version;
+ }
+ 
+ static void
+@@ -146,7 +170,7 @@ send_kill_daemon(int sd)
+ 	struct iovec iov;
+ 	pesignd_msghdr pm;
+ 
+-	check_cmd_version(sd, CMD_KILL_DAEMON, "kill-daemon", 0);
++	check_cmd_version(sd, CMD_KILL_DAEMON, "kill-daemon", 0, true);
+ 
+ 	pm.version = PESIGND_VERSION;
+ 	pm.command = CMD_KILL_DAEMON;
+@@ -288,7 +312,7 @@ unlock_token(int sd, char *tokenname, char *pin)
+ 
+ 	uint32_t size1 = pesignd_string_size(pin);
+ 
+-	check_cmd_version(sd, CMD_UNLOCK_TOKEN, "unlock-token", 0);
++	check_cmd_version(sd, CMD_UNLOCK_TOKEN, "unlock-token", 0, true);
+ 
+ 	pm.version = PESIGND_VERSION;
+ 	pm.command = CMD_UNLOCK_TOKEN;
+@@ -365,7 +389,7 @@ is_token_unlocked(int sd, char *tokenname)
+ 
+ 	uint32_t size0 = pesignd_string_size(tokenname);
+ 
+-	check_cmd_version(sd, CMD_IS_TOKEN_UNLOCKED, "is-token-unlocked", 0);
++	check_cmd_version(sd, CMD_IS_TOKEN_UNLOCKED, "is-token-unlocked", 0, true);
+ 
+ 	pm.version = PESIGND_VERSION;
+ 	pm.command = CMD_IS_TOKEN_UNLOCKED;
+@@ -464,6 +488,9 @@ static void
+ sign(int sd, char *infile, char *outfile, char *tokenname, char *certname,
+ 	int attached, uint32_t format)
+ {
++	int rc;
++	bool add_file_type;
++
+ 	int infd = open(infile, O_RDONLY);
+ 	if (infd < 0) {
+ 		fprintf(stderr, "pesign-client: could not open input file "
+@@ -493,12 +520,27 @@ oom:
+ 		exit(1);
+ 	}
+ 
+-	check_cmd_version(sd, attached ? CMD_SIGN_ATTACHED : CMD_SIGN_DETACHED,
+-			attached ? "sign-attached" : "sign-detached", 0);
++	rc = check_cmd_version(sd,
++			       attached ? CMD_SIGN_ATTACHED_WITH_FILE_TYPE
++					: CMD_SIGN_DETACHED_WITH_FILE_TYPE,
++			       attached ? "sign-attached" : "sign-detached",
++			       0, format == FORMAT_KERNEL_MODULE);
++	if (rc >= 0) {
++		add_file_type = true;
++	} else {
++		add_file_type = false;
++		check_cmd_version(sd, attached ? CMD_SIGN_ATTACHED
++					       : CMD_SIGN_DETACHED,
++				  attached ? "sign-attached" : "sign-detached",
++				  0, true);
++	}
+ 
+ 	pm->version = PESIGND_VERSION;
+-	pm->command = attached ? CMD_SIGN_ATTACHED : CMD_SIGN_DETACHED;
+-	pm->size = size0 + size1 + sizeof(format);
++	pm->command = attached ? (add_file_type ? CMD_SIGN_ATTACHED_WITH_FILE_TYPE
++						: CMD_SIGN_ATTACHED)
++			       : (add_file_type ? CMD_SIGN_DETACHED_WITH_FILE_TYPE
++						: CMD_SIGN_DETACHED);
++	pm->size = size0 + size1 + (add_file_type ? sizeof(format) : 0);
+ 	iov[0].iov_base = pm;
+ 	iov[0].iov_len = sizeof (*pm);
+ 
+@@ -515,25 +557,31 @@ oom:
+ 	}
+ 
+ 	char *buffer;
+-	buffer = malloc(size0 + size1);
++	buffer = malloc(pm->size);
+ 	if (!buffer)
+ 		goto oom;
+ 
+-	iov[0].iov_base = &format;
+-	iov[0].iov_len = sizeof(format);
++	int pos = 0;
++
++	if (add_file_type) {
++		iov[pos].iov_base = &format;
++		iov[pos].iov_len = sizeof(format);
++		pos++;
++	}
+ 
+ 	pesignd_string *tn = (pesignd_string *)buffer;
+ 	pesignd_string_set(tn, tokenname);
+-	iov[1].iov_base = tn;
+-	iov[1].iov_len = size0;
++	iov[pos].iov_base = tn;
++	iov[pos].iov_len = size0;
++	pos++;
+ 
+ 	pesignd_string *cn = pesignd_string_next(tn);
+ 	pesignd_string_set(cn, certname);
+-	iov[2].iov_base = cn;
+-	iov[2].iov_len = size1;
++	iov[pos].iov_base = cn;
++	iov[pos].iov_len = size1;
+ 
+ 	msg.msg_iov = iov;
+-	msg.msg_iovlen = 3;
++	msg.msg_iovlen = add_file_type ? 3 : 2;
+ 
+ 	n = sendmsg(sd, &msg, 0);
+ 	if (n < 0) {
+@@ -547,7 +595,7 @@ oom:
+ 	send_fd(sd, outfd);
+ 
+ 	char *srvmsg = NULL;
+-	int rc = check_response(sd, &srvmsg);
++	rc = check_response(sd, &srvmsg);
+ 	if (rc < 0) {
+ 		fprintf(stderr, "pesign-client: signing failed: \"%s\"\n",
+ 			srvmsg);
+diff --git a/src/daemon.c b/src/daemon.c
+index 84b9ebc..8522250 100644
+--- a/src/daemon.c
++++ b/src/daemon.c
+@@ -25,6 +25,7 @@
+ #include <poll.h>
+ #include <pwd.h>
+ #include <signal.h>
++#include <stdbool.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -569,7 +570,7 @@ out:
+ 
+ static void
+ handle_signing(context *ctx, struct pollfd *pollfd, socklen_t size,
+-	int attached)
++	       int attached, bool with_file_type)
+ {
+ 	struct msghdr msg;
+ 	struct iovec iov;
+@@ -593,8 +594,12 @@ oom:
+ 
+ 	n = recvmsg(pollfd->fd, &msg, MSG_WAITALL);
+ 
+-	file_format = *((uint32_t *) buffer);
+-	n -= sizeof(uint32_t);
++	if (with_file_type) {
++		file_format = *((uint32_t *) buffer);
++		n -= sizeof(uint32_t);
++	} else {
++		file_format = FORMAT_PE_BINARY;
++	}
+ 
+ 	pesignd_string *tn = (pesignd_string *)(buffer + sizeof(uint32_t));
+ 	if (n < (long long)sizeof(tn->size)) {
+@@ -674,8 +679,9 @@ finish:
+ 	teardown_digests(ctx->cms);
+ }
+ 
+-static void
+-handle_sign_attached(context *ctx, struct pollfd *pollfd, socklen_t size)
++static inline void
++handle_sign_helper(context *ctx, struct pollfd *pollfd, socklen_t size,
++		   int attached, bool with_file_type)
+ {
+ 	int rc = cms_context_alloc(&ctx->cms);
+ 	if (rc < 0)
+@@ -683,25 +689,34 @@ handle_sign_attached(context *ctx, struct pollfd *pollfd, socklen_t size)
+ 
+ 	steal_from_cms(ctx->backup_cms, ctx->cms);
+ 
+-	handle_signing(ctx, pollfd, size, 1);
++	handle_signing(ctx, pollfd, size, attached, with_file_type);
+ 
+ 	hide_stolen_goods_from_cms(ctx->cms, ctx->backup_cms);
+ 	cms_context_fini(ctx->cms);
+ }
+ 
+ static void
+-handle_sign_detached(context *ctx, struct pollfd *pollfd, socklen_t size)
++handle_sign_attached(context *ctx, struct pollfd *pollfd, socklen_t size)
+ {
+-	int rc = cms_context_alloc(&ctx->cms);
+-	if (rc < 0)
+-		return;
++	handle_sign_helper(ctx, pollfd, size, 1, false);
++}
+ 
+-	steal_from_cms(ctx->backup_cms, ctx->cms);
++static void
++handle_sign_attached_with_file_type(context *ctx, struct pollfd *pollfd, socklen_t size)
++{
++	handle_sign_helper(ctx, pollfd, size, 1, true);
++}
+ 
+-	handle_signing(ctx, pollfd, size, 0);
++static void
++handle_sign_detached(context *ctx, struct pollfd *pollfd, socklen_t size)
++{
++	handle_sign_helper(ctx, pollfd, size, 0, false);
++}
+ 
+-	hide_stolen_goods_from_cms(ctx->cms, ctx->backup_cms);
+-	cms_context_fini(ctx->cms);
++static void
++handle_sign_detached_with_file_type(context *ctx, struct pollfd *pollfd, socklen_t size)
++{
++	handle_sign_helper(ctx, pollfd, size, 0, true);
+ }
+ 
+ static void
+@@ -733,6 +748,12 @@ cmd_table_t cmd_table[] = {
+ 		{ CMD_UNLOCK_TOKEN, handle_unlock_token, "unlock-token", 0 },
+ 		{ CMD_SIGN_ATTACHED, handle_sign_attached, "sign-attached", 0 },
+ 		{ CMD_SIGN_DETACHED, handle_sign_detached, "sign-detached", 0 },
++		{ CMD_SIGN_ATTACHED_WITH_FILE_TYPE,
++		  handle_sign_attached_with_file_type,
++		  "sign-attached-with-file-type", 0 },
++		{ CMD_SIGN_DETACHED_WITH_FILE_TYPE,
++		  handle_sign_detached_with_file_type,
++		  "sign-detached-with-file-type", 0 },
+ 		{ CMD_RESPONSE, NULL, "response",  0 },
+ 		{ CMD_IS_TOKEN_UNLOCKED, handle_is_token_unlocked,
+ 			"is-token-unlocked", 0 },
+diff --git a/src/daemon.h b/src/daemon.h
+index 69384ce..5fcd97e 100644
+--- a/src/daemon.h
++++ b/src/daemon.h
+@@ -45,12 +45,14 @@ typedef enum {
+ 	CMD_RESPONSE,
+ 	CMD_IS_TOKEN_UNLOCKED,
+ 	CMD_GET_CMD_VERSION,
++	CMD_SIGN_ATTACHED_WITH_FILE_TYPE,
++	CMD_SIGN_DETACHED_WITH_FILE_TYPE,
+ 	CMD_LIST_END
+ } pesignd_cmd;
+ 
+ #define PESIGND_VERSION 0x2a9edaf0
+-#define SOCKPATH	"/var/run/pesign/socket"
+-#define PIDFILE		"/var/run/pesign.pid"
++#define SOCKPATH	"/run/pesign/socket"
++#define PIDFILE		"/run/pesign.pid"
+ 
+ static inline uint32_t UNUSED
+ pesignd_string_size(char *buffer)
+diff --git a/src/macros.pesign b/src/macros.pesign
+index 7c5cba1..72b6b9e 100644
+--- a/src/macros.pesign
++++ b/src/macros.pesign
+@@ -6,7 +6,7 @@
+ # %pesign -s -i shim.orig -o shim.efi
+ # And magically get the right thing.
+ 
+-%__pesign_token %{nil}%{?pe_signing_token:-t "%{pe_signing_token}"}
++%__pesign_token %{nil}%{?pe_signing_token:--token "%{pe_signing_token}"}
+ %__pesign_cert %{!?pe_signing_cert:"Red Hat Test Certificate"}%{?pe_signing_cert:"%{pe_signing_cert}"}
+ 
+ %__pesign_client_token %{!?pe_signing_token:"Fedora Signer (OpenSC Card)"}%{?pe_signing_token:"%{pe_signing_token}"}
+@@ -24,54 +24,24 @@
+ # -a <input ca cert filename>		# rhel only
+ # -s 					# perform signing
+ %pesign(i:o:C:e:c:n:a:s)						\
+-  _pesign_nssdir=/etc/pki/pesign					\
+-  if [ %{__pesign_cert} = "Red Hat Test Certificate" ]; then		\
+-    _pesign_nssdir=/etc/pki/pesign-rh-test				\
+-  fi									\
+-  if [ -x %{_pesign} ] &&  						\\\
+-       [ "%{_target_cpu}" == "x86_64" -o 				\\\
+-         "%{_target_cpu}" == "aarch64" ]; then				\
+-    if [ "0%{?rhel}" -ge "7" -a -f /usr/bin/rpm-sign ]; then		\
+-      nss=$(mktemp -p $PWD -d)						\
+-      echo > ${nss}/pwfile						\
+-      certutil -N -d ${nss} -f ${nss}/pwfile				\
+-      certutil -A -n "ca" -t "CT,C," -i %{-a*} -d ${nss}		\
+-      certutil -A -n "signer" -t ",c," -i %{-c*} -d ${nss}		\
+-      sattrs=$(mktemp -p $PWD --suffix=.der)				\
+-      %{_pesign} %{-i} -E ${sattrs} --certdir ${nss} --force		\
+-      rpm-sign --key "%{-n*}" --rsadgstsign ${sattrs}			\
+-      %{_pesign} -R ${sattrs}.sig -I ${sattrs} %{-i}			\\\
+-                 --certdir ${nss} -c signer %{-o}			\
+-      rm -rf ${sattrs} ${sattrs}.sig ${nss}				\
+-    elif [ "$(id -un)" == "kojibuilder" -a				\\\
+-           grep -q ID=fedora /etc/os-release -a				\\\
+-           ! -S /var/run/pesign/socket ]; then				\
+-      echo "No socket even though this is kojibuilder" 1>&2		\
+-      ls -ld /var/run/pesign 1>&2					\
+-      ls -l /var/run/pesign/socket 1>&2					\
+-      getfacl /var/run/pesign 1>&2					\
+-      getfacl /var/run/pesign/socket 1>&2				\
+-      exit 1								\
+-    elif [ -S /var/run/pesign/socket ]; then				\
+-      %{_pesign_client} -t %{__pesign_client_token}			\\\
+-                        -c %{__pesign_client_cert}			\\\
+-                        %{-i} %{-o} %{-e} %{-s} %{-C}			\
+-    else								\
+-      %{_pesign} %{__pesign_token} -c %{__pesign_cert}			\\\
+-                 --certdir ${_pesign_nssdir}				\\\
+-                 %{-i} %{-o} %{-e} %{-s} %{-C}				\
+-    fi									\
+-  else									\
+-    if [ -n "%{-i*}" -a -n "%{-o*}" ]; then				\
+-      mv %{-i*} %{-o*}							\
+-    elif [ -n "%{-i*}" -a -n "%{-e*}" ]; then				\
+-      touch %{-e*}							\
+-    fi									\
+-  fi									\
+-  if [ ! -s %{-o} ]; then						\
+-    if [ -e "%{-o*}" ]; then						\
+-      rm -f %{-o*}							\
+-    fi									\
+-    exit 1								\
+-  fi ;
+-
++  %{_libexecdir}/pesign/pesign-rpmbuild-helper				\\\
++    "%{_target_cpu}"							\\\
++    "%{_pesign}"							\\\
++    "%{_pesign_client}"							\\\
++    %{?__pesign_client_token:--client-token %{__pesign_client_token}}	\\\
++    %{?__pesign_client_cert:--client-cert %{__pesign_client_cert}}	\\\
++    %{?__pesign_token:%{__pesign_token}}				\\\
++    %{?__pesign_cert:--cert %{__pesign_cert}}				\\\
++    %{?_buildhost:--hostname "%{_buildhost}"}				\\\
++    %{?vendor:--vendor "%{vendor}"}					\\\
++    %{?_rhel:--rhelver "%{_rhel}"}					\\\
++    %{?-n:--rhelcert %{-n*}}%{?!-n:--rhelcert %{__pesign_cert}}	\\\
++    %{?-a:--rhelcafile "%{-a*}"}					\\\
++    %{?-c:--rhelcertfile "%{-c*}"}					\\\
++    %{?-C:--certout "%{-C*}"}						\\\
++    %{?-e:--sattrout "%{-e*}"}						\\\
++    %{?-i:--in "%{-i*}"}						\\\
++    %{?-o:--out "%{-o*}"}						\\\
++    %{?-s:--sign}							\\\
++    ;									\
++%{nil}
+diff --git a/src/pesign-authorize b/src/pesign-authorize
+index ba7dd8e..3a326f3 100755
+--- a/src/pesign-authorize
++++ b/src/pesign-authorize
+@@ -6,7 +6,7 @@ set -u
+ 
+ # This script is deprecated and will be removed in a future release.
+ 
+-for x in /var/run/pesign/ /etc/pki/pesign*/ ; do
++for x in /etc/pki/pesign/ /run/pesign/; do
+ 	chown -R pesign:pesign "${x}" || true
+ 	chmod -R ug+rwX "${x}" || true
+ done
+diff --git a/src/pesign-rpmbuild-helper.in b/src/pesign-rpmbuild-helper.in
+new file mode 100644
+index 0000000..0a732a6
+--- /dev/null
++++ b/src/pesign-rpmbuild-helper.in
+@@ -0,0 +1,239 @@
++#!/bin/bash
++# shellcheck shell=bash
++
++set -eu
++set -x
++
++usage() {
++    local status="${1}" && shift
++    local out
++    if [[ "${status}" -eq 0 ]] ; then
++	out=/dev/stdout
++    else
++	out=/dev/stderr
++    fi
++
++    if [[ $# -gt 0 ]] ; then
++	echo "${0}: error: $*" >>"${out}"
++    fi
++    echo "usage: ${0} TARGET_CPU PESIGN_BINARY PESIGN_CLIENT_BINARY [OPTIONS]" >>"${out}"
++    exit "${status}"
++}
++
++is_efi_arch() {
++    local arch="${1}"
++    local arches=(@@EFI_ARCHES@@)
++    local x
++    for x in "${arches[@]}" ; do
++	if [[ "${arch}" = "${x}" ]] ; then
++	    return 0
++	fi
++    done
++    return 1
++}
++
++error_on_empty() {
++    local f="${1}"
++    if [[ ! -s "${f}" ]] ; then
++	if [[ -e "${f}" ]] ; then
++	    rm -f "${f}"
++	fi
++	echo "${0}: error: empty result file \"${f}\"">>/dev/stderr
++	exit 1
++    fi
++}
++
++main() {
++    if [[ $# -lt 3 ]] ; then
++	usage 1 not enough arguments
++    fi
++    local target_cpu="${1}" && shift
++    local bin="${1}" && shift
++    local client="${1}" && shift
++
++    local rhelcafile="" || :
++    local rhelcertfile="" || :
++
++    local certout=() || :
++    local sattrout=() || :
++    local input=() || :
++    local output=() || :
++    local client_token=() || :
++    local client_cert=() || :
++    local token=() || :
++    local cert=() || :
++    local rhelcert=() || :
++    local rhelver=0 || :
++    local sign="" || :
++    local arch="" || :
++    local vendor="" || :
++    local HOSTNAME="" || :
++
++    while [[ $# -ge 2 ]] ; do
++	case " ${1} " in
++	" --rhelcafile ")
++	    rhelcafile="${2}"
++	    ;;
++	" --rhelcertfile ")
++	    rhelcertfile="${2}"
++	    ;;
++	" --hostname ")
++	    HOSTNAME="${2}"
++	    ;;
++	" --certout ")
++	    certout[0]=-C
++	    certout[1]="${2}"
++	    ;;
++	" --sattrout ")
++	    sattrout[0]=-e
++	    sattrout[1]="${2}"
++	    ;;
++	" --client-token ")
++	    client_token[0]=-t
++	    client_token[1]="${2}"
++	    ;;
++	" --client-cert ")
++	    client_cert[0]=-c
++	    client_cert[1]="${2}"
++	    ;;
++	" --token ")
++	    token[0]=-t
++	    token[1]="${2}"
++	    ;;
++	" --cert ")
++	    cert[0]=-c
++	    cert[1]="${2}"
++	    ;;
++	" --rhelcert ")
++	    rhelcert[0]=-c
++	    rhelcert[1]="${2}"
++	    ;;
++	" --in ")
++	    input[0]=-i
++	    input[1]="${2}"
++	    ;;
++	" --out ")
++	    output[0]=-o
++	    output[1]="${2}"
++	    ;;
++	" --rhelver ")
++	    rhelver="${2}"
++	    ;;
++	" --vendor ")
++	    vendor="${2}"
++	    ;;
++	*)
++	    break
++	    ;;
++	esac
++	shift
++	shift
++    done
++    if [[ $# -ge 1 ]] && [[ "${1}" = --sign ]] ; then
++	sign=-s
++	shift
++    fi
++
++    if [[ -z "${target_cpu}" ]] ; then
++	target_cpu="$(uname -m)"
++    fi
++
++    target_cpu="${target_cpu/i?86/ia32}"
++    target_cpu="${target_cpu/x86_64/x64}"
++    target_cpu="${target_cpu/aarch64/aa64}"
++    target_cpu="${target_cpu/arm*/arm/}"
++
++    local nssdir=/etc/pki/pesign
++    if [[ "${#cert[@]}" -eq 2 ]] &&
++       [[ "${cert[1]}" == "Red Hat Test Certificate" ]] ; then
++	nssdir=/etc/pki/pesign-rh-test
++    fi
++
++    # is_efi_arch is ultimately returning "is pesign configured to sign these
++    # using the rpm macro", so if it isn't, we're just copying the input to
++    # the output
++    if [[ -x "${bin}" ]] && ! is_efi_arch "${target_cpu}" ; then
++	if [[ -n "${input[*]}" ]] && [[ -n "${output[*]}" ]] ; then
++	    cp -v "${input[1]}" "${output[1]}"
++	elif [[ -n "${input[*]}" ]] && [[ -n "${sattrout[*]}" ]] ; then
++	    touch "${sattrout[1]}"
++	fi
++
++	# if there's a 0-sized output file, delete it and error out
++	error_on_empty "${output[1]}"
++	return 0
++    fi
++
++    USERNAME="${USERNAME:-$(id -un)}"
++
++    local socket="" || :
++    if grep -q ID=fedora /etc/os-release \
++       && [[ "${rhelver}" -lt 7 ]] \
++       && [[ "${USERNAME}" = "mockbuild" ]] \
++       && [[ "${vendor}" = "Fedora Project" ]] \
++       && [[ "${HOSTNAME}" =~ bkernel.* ]]
++    then
++	if [[ -S /run/pesign/socket ]] ; then
++	    socket=/run/pesign/socket
++	elif [[ -S /var/run/pesign/socket ]]; then
++	    socket=/var/run/pesign/socket
++	else
++	    echo "Warning: no pesign socket even though user is ${USERNAME}" 1>&2
++	    echo "Warning: if this is a non-scratch koji build, this is wrong" 1>&2
++	    ls -ld /run/pesign /var/run/pesign 1>&2 ||:
++	    ls -l /run/pesign/socket /var/run/pesign/socket 1>&2 ||:
++	    getfacl /run/pesign /run/pesign/socket /var/run/pesign /var/run/pesign/socket 1>&2 ||:
++	    getfacl -n /run/pesign /run/pesign/socket /var/run/pesign /var/run/pesign/socket 1>&2 ||:
++	fi
++    fi
++
++    if [[ "${rhelver}" -ge 7 ]] ; then
++	nssdir="$(mktemp -p "${PWD}" -d)"
++	echo > "${nssdir}/pwfile"
++	certutil -N -d "${nssdir}" -f "${nssdir}/pwfile"
++	certutil -A -n "ca" -t "CTu,CTu,CTu" -i "${rhelcafile}" -d "${nssdir}"
++	certutil -A -n "signer" -t "CTu,CTu,CTu" -i "${rhelcertfile}" -d "${nssdir}"
++	sattrs="$(mktemp -p "${PWD}" --suffix=.der)"
++	"${bin}" -E "${sattrs}" --certdir "${nssdir}" \
++	    "${input[@]}" --force
++	rpm-sign --key "${rhelcert[1]}" --rsadgstsign "${sattrs}"
++	"${bin}" -R "${sattrs}.sig" -I "${sattrs}" \
++	    --certdir "${nssdir}" -c signer \
++	    "${input[@]}" "${output[@]}"
++	rm -rf "${sattrs}" "${sattrs}.sig" "${nssdir}"
++    elif [[ -n "${socket}" ]] ; then
++	### welcome haaaaack city
++	if [[ "${client_token[1]}" = "OpenSC Card (Fedora Signer)" ]] ; then
++	    if [[ "${input[1]}" =~ (/|^)vmlinuz($|[_.-]) ]] \
++	       || [[ "${input[1]}" =~ (/|^)bzImage($|[_.-]) ]] ; then
++		if [[ "${rhelcertfile}" =~ redhatsecureboot501.* ]] \
++		   || [[ "${rhelcertfile}" =~ redhatsecureboot401.* ]] \
++		   || [[ "${rhelcertfile}" =~ centossecureboot201.* ]] ; then
++		    client_cert[1]=kernel-signer
++		elif [[ "${rhelcertfile}" =~ redhatsecureboot502.* ]] \
++		   || [[ "${rhelcertfile}" =~ centossecureboot202.* ]] ; then
++		    client_cert[1]=grub2-signer
++		elif [[ "${rhelcertfile}" =~ redhatsecureboot503.* ]] \
++		   || [[ "${rhelcertfile}" =~ centossecureboot203.* ]] ; then
++		    client_cert[1]=fwupd-signer
++		fi
++	    fi
++	fi
++	"${client}" "${client_token[@]}" "${client_cert[@]}"    \
++	    "${sattrout[@]}" "${certout[@]}"	\
++	    ${sign} "${input[@]}" "${output[@]}"
++    else
++	"${bin}" --certdir "${nssdir}" "${token[@]}"	\
++	    "${cert[@]}" ${sign} "${sattrout[@]}"	\
++	    "${certout[@]}"    "${input[@]}" "${output[@]}"
++    fi
++
++    # if there's a 0-sized output file, delete it and error out
++    if [[ "${#output[@]}" -eq 2 ]] ; then
++	error_on_empty "${output[1]}"
++    fi
++}
++
++main "${@}"
++
++# vim:filetype=sh:fenc=utf-8:tw=78:sts=4:sw=4
+\ No newline at end of file
+diff --git a/src/pesign.service.in b/src/pesign.service.in
+index c75a000..4ac2199 100644
+--- a/src/pesign.service.in
++++ b/src/pesign.service.in
+@@ -4,6 +4,6 @@ Description=Pesign signing daemon
+ [Service]
+ PrivateTmp=true
+ Type=forking
+-PIDFile=/var/run/pesign.pid
++PIDFile=/run/pesign.pid
+ ExecStart=/usr/bin/pesign --daemonize
+ ExecStartPost=@@LIBEXECDIR@@/pesign/pesign-authorize
+diff --git a/src/pesign.sysvinit.in b/src/pesign.sysvinit.in
+index b0e0f84..bf8edec 100644
+--- a/src/pesign.sysvinit.in
++++ b/src/pesign.sysvinit.in
+@@ -4,7 +4,7 @@
+ #
+ # chkconfig: - 50 50
+ # processname: /usr/bin/pesign
+-# pidfile: /var/run/pesign.pid
++# pidfile: /run/pesign.pid
+ ### BEGIN INIT INFO 
+ # Provides: pesign
+ # Default-Start:
+@@ -20,9 +20,9 @@ RETVAL=0
+ 
+ start(){
+     echo -n "Starting pesign: "
+-    mkdir /var/run/pesign 2>/dev/null &&
+-        chown pesign:pesign /var/run/pesign &&
+-        chmod 0770 /var/run/pesign
++    mkdir /run/pesign 2>/dev/null &&
++        chown pesign:pesign /run/pesign &&
++        chmod 0770 /run/pesign
+     daemon /usr/bin/pesign --daemonize
+     RETVAL=$?
+     echo
+@@ -32,7 +32,7 @@ start(){
+ 
+ stop(){
+     echo -n "Stopping pesign: "
+-    killproc -p /var/run/pesign.pid pesignd
++    killproc -p /run/pesign.pid pesignd
+     RETVAL=$?
+     echo
+     rm -f /var/lock/subsys/pesign
+diff --git a/src/tmpfiles.conf b/src/tmpfiles.conf
+index c1cf355..3375ad5 100644
+--- a/src/tmpfiles.conf
++++ b/src/tmpfiles.conf
+@@ -1 +1 @@
+-D /var/run/pesign 0770 pesign pesign -
++D /run/pesign 0770 pesign pesign -
+-- 
+2.27.0
+
