@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       0.113
-Release:       6
+Release:       7
 License:       GPLv2
 URL:           https://github.com/vathpela/pesign
 Source0:       https://github.com/rhboot/pesign/archive/113.tar.gz
@@ -19,6 +19,7 @@ BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc
 Patch0001:     Fix-the-build-with-nss-3.44.patch
 Patch0002:     remove-superfluous-type-settings.patch
 Patch0003:     Fix-CVE-2022-3560.patch
+Patch0004:     0001-Rename-var-run-to-run.patch
 
 %description
 pesign is a command line tool for manipulating signatures and
@@ -53,7 +54,7 @@ install -m 0755 %{SOURCE2} %{buildroot}%{python3_sitelib}/mockbuild/plugins/
 %pre
 getent group pesign >/dev/null || groupadd -r pesign
 getent passwd pesign >/dev/null || \
-        useradd -r -g pesign -d /var/run/pesign -s /sbin/nologin \
+        useradd -r -g pesign -d /run/pesign -s /sbin/nologin \
                 -c "Group for the pesign signing daemon" pesign
 exit 0
 
@@ -75,14 +76,15 @@ exit 0
 %dir %attr(0775,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/
 %config(noreplace) %attr(0664,pesign,pesign) %{_sysconfdir}/pki/pesign-rh-test/*
 %{_libexecdir}/pesign/pesign-authorize
+%{_libexecdir}/pesign/pesign-rpmbuild-helper
 %config(noreplace)/%{_sysconfdir}/pesign/*
 %{_sysconfdir}/popt.d/pesign.popt
 %{macrosdir}/macros.pesign
-%dir %attr(0770, pesign, pesign) %{_localstatedir}/run/%{name}
+%dir %attr(0770, pesign, pesign) %{_rundir}/%{name}
 %dir %attr(0775,pesign,pesign) /etc/pki/pesign/euleros-pesign-db
 %attr(0644,pesign,pesign) /etc/pki/pesign/euleros-pesign-db/*
-%ghost %attr(0660, -, -) %{_localstatedir}/run/%{name}/socket
-%ghost %attr(0660, -, -) %{_localstatedir}/run/%{name}/pesign.pid
+%ghost %attr(0660, -, -)  %{_rundir}/%{name}/socket
+%ghost %attr(0660, -, -)  %{_rundir}//%{name}/pesign.pid
 %{_tmpfilesdir}/pesign.conf
 %{_unitdir}/pesign.service
 %{python3_sitelib}/mockbuild/plugins/*/pesign.*
@@ -95,6 +97,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Wed Mar 01 2023 wulei <wulei80@h-partners.com> - 0.113-7
+- Rename /var/run/ to /run/
+
 * Tue Feb 14 2023 luopihui <luopihui@ncti-gba.cn> - 0.113-6
 - Fix CVE-2022-3560
 
