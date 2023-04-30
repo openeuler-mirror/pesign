@@ -2,7 +2,7 @@
 Name:          pesign
 Summary:       Signing utility for UEFI binaries
 Version:       115
-Release:       4
+Release:       5
 License:       GPLv2
 URL:           https://github.com/rhboot/pesign
 Source0:       https://github.com/rhboot/pesign/archive/refs/tags/115.tar.gz
@@ -18,6 +18,7 @@ BuildRequires: python3-rpm-macros python3 systemd python3-devel gcc mandoc
 
 Patch0001:     Bugfix-cms_common-fix-cert-match-check.patch
 Patch0002:     Bugfix-Free-resources-if-certificate-cannot-be-found.patch
+Patch0003:     fix-clang-flag.patch
 
 # Feature: support SM2 and SM3
 Patch9000:     Feature-pesign-support-SM3-digest-algorithm.patch
@@ -41,6 +42,10 @@ Files for help with pesign.
 tar -jxf %{SOURCE3}
 
 %build
+%if "%toolchain" == "clang"
+	grep -rl "Wno-analyzer-malloc-leak" . | xargs sed -i 's/-Wno-analyzer-malloc-leak//g'
+	export CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-pointer-bool-conversion -Wno-cmse-union-leak" 
+%endif
 make PREFIX=%{_prefix} LIBDIR=%{_libdir}
 
 %install
@@ -100,6 +105,9 @@ exit 0
 %{_mandir}/man*/*
 
 %changelog
+* Sun Apr 30 2023 yoo <sunyuechi@iscas.ac.cn> - 115-5
+- fix clang flag
+
 * Tue Feb 14 2023 luopihui <luopihui@ncti-gba.cn> - 115-4
 - Fix CVE-2022-3560
 

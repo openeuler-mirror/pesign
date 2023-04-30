@@ -1,0 +1,13 @@
+diff -u -r pesign-115/src/wincert.c pesign-115/src/wincert.c
+--- pesign-115/src/wincert.c	2022-03-09 01:46:30.000000000 +0800
++++ pesign-115/src/wincert.c	2023-04-29 22:05:47.000000000 +0800
+@@ -15,7 +15,9 @@
+  * gives you stops right before the call to free()
+  */
+ #pragma GCC diagnostic push
++#ifndef __clang__
+ #pragma GCC diagnostic ignored "-Wanalyzer-malloc-leak"
++#endif
+ static int
+ generate_cert_list(SECItem **signatures, int num_signatures,
+ 		   void **cert_list, size_t *cert_list_size)
